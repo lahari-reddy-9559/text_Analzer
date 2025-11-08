@@ -164,7 +164,7 @@ from typing import List
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 
-def extract_topics(text: str, n_topics: int = 3, n_words: int = 6) -> List[str]:
+def extract_topics(text: str, n_topics: int = 1, n_words: int = 6) -> List[str]:
     """Perform lightweight topic extraction via LDA."""
     tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
     X = tfidf.fit_transform([text])
