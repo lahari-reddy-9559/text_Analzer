@@ -57,21 +57,36 @@ def load_kaggle_dataset_and_vect():
     return df, vec, df["cleaned_text"].tolist()
 
 @st.cache_resource
-def prepare_or_load_sentiment_model(df, vec):
+# Change this function signature
+@st.cache_resource
+def prepare_or_load_sentiment_model(_vec, df):
+    import joblib
+    import os
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+
+    MODEL_DIR = "models"
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    RANDOM_STATE = 42
     clf_path = os.path.join(MODEL_DIR,"rf_sentiment.pkl")
     vec_path = os.path.join(MODEL_DIR,"tfidf.pkl")
+
     if os.path.exists(clf_path) and os.path.exists(vec_path):
         clf = joblib.load(clf_path)
         vec_loaded = joblib.load(vec_path)
         return clf, vec_loaded
-    X = vec.transform(df["cleaned_text"].tolist())
-    y = df["sentiment"].map(sentiment_mapping).astype(int)
-    X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,random_state=RANDOM_STATE,stratify=y)
-    clf = RandomForestClassifier(n_estimators=100,random_state=RANDOM_STATE,n_jobs=-1)
-    clf.fit(X_train.toarray(),y_train)
-    joblib.dump(clf,clf_path)
-    joblib.dump(vec,vec_path)
-    return clf, vec
+
+    X = _vec.transform(df["cleaned_text"].tolist())
+    y = df["sentiment"].map({"negative":0,"neutral":1,"positive":2}).astype(int)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y)
+
+    clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
+    clf.fit(X_train.toarray(), y_train)
+
+    joblib.dump(clf, clf_path)
+    joblib.dump(_vec, vec_path)
+    return clf, _vec
+
 
 # ----------------- Utilities -----------------
 def analyze_sentiment(text, vec, clf):
