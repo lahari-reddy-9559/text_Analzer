@@ -156,18 +156,26 @@ def extract_keywords(text: str, top_n: int = 8) -> List[str]:
     return [k for k, _ in sorted_keywords[:top_n]]
 
 
-def extract_topics(text: str, n_topics: int = 2, n_words: int = 3) -> List[str]:
-    """Perform lightweight topic extraction via LDA."""
-    tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
-    X = tfidf.fit_transform([text])
-    lda = LatentDirichletAllocation(n_components=n_topics, random_state=0)
+def extract_topics(text, num_topics=1):
+    """Extract a single meaningful topic from the text."""
+    from sklearn.decomposition import LatentDirichletAllocation
+    from sklearn.feature_extraction.text import CountVectorizer
+
+    clean_t = clean_text(text)
+    if not clean_t.strip():
+        return []
+
+    # Convert to bag-of-words
+    vectorizer = CountVectorizer(max_features=5000, stop_words='english')
+    X = vectorizer.fit_transform([clean_t])
+
+    # Train a small LDA model to get top topic words
+    lda = LatentDirichletAllocation(n_components=1, random_state=42)
     lda.fit(X)
-    terms = tfidf.get_feature_names_out()
-    topics = []
-    for comp in lda.components_:
-        top_terms = [terms[i] for i in comp.argsort()[:-n_words - 1:-1]]
-        topics.append(", ".join(top_terms))
-    return topics
+
+    feature_names = vectorizer.get_feature_names_out()
+    topic_words = [feature_names[i] for i in lda.components_[0].argsort()[:-8:-1]]
+    return [", ".join(topic_words)]
 
 
 def generate_recommendations(text: str, sentiment_label: str, keywords: List[str], topics: List[str]) -> List[str]:
