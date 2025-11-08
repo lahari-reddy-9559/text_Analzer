@@ -34,7 +34,7 @@ try:
         extract_topics,
         generate_recommendations,
     )
-except Exception:
+except Exception as e:
     st.error("❌ Could not import summarization_utils. Ensure file is present and in PYTHONPATH.")
     st.stop()
 
@@ -153,8 +153,13 @@ def analyze_sentiment(text, vec, clf):
     clean_t = clean_text_util(text)
     X = vec.transform([clean_t]).toarray()
     probs = clf.predict_proba(X)[0]
-    results = {reverse_sentiment_mapping[c]: float(p) for c, p in zip(clf.classes_, probs)}
-    top = reverse_sentiment_mapping[clf.classes_[np.argmax(probs)]]
+    # clf.classes_ should be numeric labels (0,1,2)
+    results = {}
+    for c, p in zip(clf.classes_, probs):
+        # map numeric class to label string using reverse_sentiment_mapping
+        label = reverse_sentiment_mapping.get(int(c), str(c))
+        results[label] = float(p)
+    top = reverse_sentiment_mapping[int(clf.classes_[np.argmax(probs)])]
     return results, top
 
 
@@ -238,26 +243,26 @@ if uploaded:
 
 st.markdown("---")
 
-# Buttons row
-cols = st.columns(4)
-choice = None
-buttons = [
-    ("🧠 Sentiment Analysis", "sentiment"),
-    ("✂️ Extractive Summary", "extractive"),
-    ("🪶 Abstractive Summary", "abstractive"),
-    ("☁️ Word Cloud", "wordcloud")
-]
-# extended features
-buttons.extend([
-    ("🧩 Keywords", "keywords"),
-    ("📊 Topics", "topics"),
-    ("🎯 Insights", "insights")
-])
+# ---------- TWO ROWS: Row1 (4 buttons) Row2 (3 buttons) ----------
+st.markdown("<br>", unsafe_allow_html=True)
+row1 = st.columns(4)
+with row1[0]:
+    sentiment_btn = st.button("🧠 Sentiment Analysis", key="btn_sentiment")
+with row1[1]:
+    extractive_btn = st.button("✂️ Extractive Summary", key="btn_extractive")
+with row1[2]:
+    abstractive_btn = st.button("🪶 Abstractive Summary", key="btn_abstractive")
+with row1[3]:
+    wordcloud_btn = st.button("☁️ Word Cloud", key="btn_wordcloud")
 
-for (label, val), col in zip(buttons, cols + [cols[-1]] * max(0, len(buttons) - len(cols))):
-    with col:
-        if st.button(label):
-            choice = val
+st.markdown("<br>", unsafe_allow_html=True)
+row2 = st.columns(3)
+with row2[0]:
+    keywords_btn = st.button("🧩 Keywords", key="btn_keywords")
+with row2[1]:
+    topics_btn = st.button("📊 Topics", key="btn_topics")
+with row2[2]:
+    insights_btn = st.button("🎯 Insights", key="btn_insights")
 
 st.markdown("---")
 
@@ -267,7 +272,9 @@ dark_mode = is_streamlit_dark()
 # Main Logic: center visuals
 # -------------------------
 if text_input and text_input.strip():
-    if choice == "sentiment":
+
+    # Sentiment
+    if sentiment_btn:
         st.subheader("🧠 Sentiment Analysis")
         sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
         st.success(f"Predicted Sentiment: **{top_sent.upper()}**")
@@ -277,25 +284,29 @@ if text_input and text_input.strip():
         with c2:
             st.pyplot(fig, use_container_width=False)
 
-    elif choice == "extractive":
+    # Extractive summary
+    if extractive_btn:
         st.subheader("✂️ Extractive Summary")
         st.info(extractive_reduce(text_input))
 
-    elif choice == "abstractive":
+    # Abstractive summary
+    if abstractive_btn:
         st.subheader("🪶 Abstractive Summary")
         try:
             st.info(abstractive_summarize_text(text_input))
         except Exception as e:
             st.error(f"Abstractive summarization error: {e}")
 
-    elif choice == "wordcloud":
+    # Wordcloud
+    if wordcloud_btn:
         st.subheader("☁️ Word Cloud Visualization")
         wc_img = generate_wc_image(text_input, dark_mode=dark_mode)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.image(wc_img, use_column_width=False, width=500)
 
-    elif choice == "keywords":
+    # Keywords
+    if keywords_btn:
         st.subheader("🧩 Key Keywords")
         kw = extract_keywords(text_input)
         if kw:
@@ -303,7 +314,8 @@ if text_input and text_input.strip():
         else:
             st.info('No keywords extracted.')
 
-    elif choice == "topics":
+    # Topics
+    if topics_btn:
         st.subheader("📊 Extracted Topics")
         topics = extract_topics(text_input)
         if topics:
@@ -312,7 +324,8 @@ if text_input and text_input.strip():
         else:
             st.info('No topics extracted.')
 
-    elif choice == "insights":
+    # Insights
+    if insights_btn:
         st.subheader("🎯 Actionable Insights")
         sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
         kw = extract_keywords(text_input)
@@ -322,7 +335,7 @@ if text_input and text_input.strip():
             st.markdown(f"- {r}")
 
     # PDF generation (small/compact visuals)
-    if st.button("📥 Download Full Report (PDF)"):
+    if st.button("📥 Download Full Report (PDF)", key="btn_pdf"):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
         styles = getSampleStyleSheet()
