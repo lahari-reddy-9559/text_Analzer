@@ -86,12 +86,15 @@ def load_and_preprocess_data():
 # Train models
 # -----------------------
 @st.cache_resource
-def train_models(X_train, y_train):
+@st.cache_resource
+def train_models(_X_train, _y_train):
     clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    clf.fit(X_train.toarray(), y_train)
-    lda = LatentDirichletAllocation(n_components=5, random_state=42, learning_method='batch', max_iter=10)
-    lda.fit(X_train)
+    clf.fit(_X_train.toarray(), _y_train)
+    lda = LatentDirichletAllocation(n_components=5, random_state=42,
+                                    learning_method='batch', max_iter=10)
+    lda.fit(_X_train)
     return clf, lda
+
 
 # Load data and models
 df, tfidf_vectorizer, X_train, y_train = load_and_preprocess_data()
