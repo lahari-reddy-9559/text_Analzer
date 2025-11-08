@@ -2,12 +2,12 @@ import re
 import math
 import heapq
 import nltk
+import streamlit as st
 import numpy as np
 from typing import List
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
-import streamlit as st
 
 # --- Setup ---
 try:
@@ -146,8 +146,9 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small",
     return str(out)
 
 
-# --- Keywords, Topics, Insights ---
+# --- New Features ---
 def extract_keywords(text: str, top_n: int = 8) -> List[str]:
+    """Extract top-N keywords using TF-IDF weights."""
     tfidf = TfidfVectorizer(stop_words='english', max_features=5000)
     X = tfidf.fit_transform([text])
     scores = zip(tfidf.get_feature_names_out(), np.asarray(X.sum(axis=0)).ravel())
@@ -156,6 +157,7 @@ def extract_keywords(text: str, top_n: int = 8) -> List[str]:
 
 
 def extract_topics(text: str, n_topics: int = 3, n_words: int = 6) -> List[str]:
+    """Perform lightweight topic extraction via LDA."""
     tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
     X = tfidf.fit_transform([text])
     lda = LatentDirichletAllocation(n_components=n_topics, random_state=0)
@@ -169,19 +171,22 @@ def extract_topics(text: str, n_topics: int = 3, n_words: int = 6) -> List[str]:
 
 
 def generate_recommendations(text: str, sentiment_label: str, keywords: List[str], topics: List[str]) -> List[str]:
+    """Generate actionable recommendations based on text content."""
     recs = []
     low_sent = sentiment_label.lower()
     if "negative" in low_sent:
-        recs.append("⚠️ Negative tone — investigate underlying causes.")
+        recs.append("⚠️ Text indicates dissatisfaction — consider deeper root-cause analysis.")
     elif "neutral" in low_sent:
-        recs.append("🟡 Neutral tone — may lack engagement or clear stance.")
+        recs.append("🟡 Neutral tone — possible lack of engagement or clarity.")
     elif "positive" in low_sent:
-        recs.append("✅ Positive sentiment — reinforce these key factors.")
+        recs.append("✅ Positive insights — maintain and amplify these strengths.")
 
-    if any(w in text.lower() for w in ["delay", "issue", "problem", "slow"]):
-        recs.append("📊 Possible operational inefficiency detected.")
+    if any(word in text.lower() for word in ["delay", "slow", "issue", "problem"]):
+        recs.append("📊 Operational delays detected — optimize workflow or communication.")
+
     if "customer" in text.lower():
-        recs.append("💬 Improve customer interaction or satisfaction.")
+        recs.append("💬 Customer-focused improvement recommended.")
+
     if not recs:
-        recs.append("ℹ️ No immediate action detected — review contextually.")
+        recs.append("ℹ️ No specific action detected — consider contextual review.")
     return recs
