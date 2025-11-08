@@ -175,7 +175,7 @@ def extract_topics(text, num_topics=1):
 
     feature_names = vectorizer.get_feature_names_out()
     topic_words = [for i in lda.components_[0].argsort()[:-8:-1]]
-    return ["Topic cluster"+", ".join(topic_words)]
+    return [", ".join(topic_words)]
 
 
 def generate_recommendations(text: str, sentiment_label: str, keywords: List[str], topics: List[str]) -> List[str]:
