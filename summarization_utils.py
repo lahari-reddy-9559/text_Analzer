@@ -1,201 +1,99 @@
-import re
-import math
-import heapq
+# summarization_utils.py
+import string
 import nltk
-import streamlit as st
-import numpy as np
-from typing import List
+from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
+import numpy as np
 
-# --- Setup ---
-try:
-    lemmatizer = WordNetLemmatizer()
-    STOPWORDS = set(nltk.corpus.stopwords.words("english"))
-except Exception:
-    lemmatizer = None
-    STOPWORDS = set()
-
-_TRANSFORMERS_AVAILABLE = False
-
-
-def try_enable_transformers():
-    global _TRANSFORMERS_AVAILABLE
-    if _TRANSFORMERS_AVAILABLE:
-        return True, None
+# Ensure necessary NLTK downloads
+for pkg in ['punkt', 'stopwords', 'wordnet']:
     try:
-        from transformers import pipeline, AutoTokenizer
-        import torch
-        _TRANSFORMERS_AVAILABLE = True
-        return True, None
-    except Exception as e:
-        _TRANSFORMERS_AVAILABLE = False
-        return False, f"Transformers unavailable ({str(e)[:50]})"
+        nltk.data.find(f'tokenizers/{pkg}' if pkg=='punkt' else f'corpora/{pkg}')
+    except LookupError:
+        nltk.download(pkg, quiet=True)
 
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
 
-# --- Core NLP Utilities ---
-_SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
-
-
-def split_sentences(text: str) -> List[str]:
-    sents = [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
-    return sents or [text.strip()]
-
-
-def word_tokens(text: str) -> List[str]:
-    return [w.lower() for w in re.findall(r"\w+", text)]
-
-
+# -------------------------
+# Text cleaning
+# -------------------------
 def clean_text(text: str) -> str:
-    if not isinstance(text, str):
-        return ""
-    t = text.lower()
-    t = t.translate(str.maketrans("", "", r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""))
-    toks = [lemmatizer.lemmatize(w) for w in t.split() if w and w not in STOPWORDS] if lemmatizer else t.split()
-    return " ".join(toks)
+    text = str(text).lower()
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    words = [lemmatizer.lemmatize(w) for w in text.split() if w not in stop_words]
+    return ' '.join(words)
 
-
-# --- Improved Extractive Summarization ---
-def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max_sentences: int = 6) -> str:
-    sentences = split_sentences(text)
-    if len(sentences) <= 1:
+# -------------------------
+# Extractive summarization (simple)
+# -------------------------
+def extractive_reduce(text: str, max_sentences=3) -> str:
+    from nltk.tokenize import sent_tokenize
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    sentences = sent_tokenize(text)
+    if len(sentences) <= max_sentences:
         return text
+    vec = TfidfVectorizer(stop_words='english')
+    X = vec.fit_transform(sentences)
+    scores = X.sum(axis=1)
+    top_idx = np.argsort(scores, axis=0)[-max_sentences:].flatten()
+    summary = ' '.join([sentences[i] for i in sorted(top_idx)])
+    return summary
 
-    word_freq = {}
-    for sent in sentences:
-        for w in word_tokens(sent):
-            if w not in STOPWORDS:
-                word_freq[w] = word_freq.get(w, 0) + 1
-    if not word_freq:
-        return " ".join(sentences[:min_sentences])
+# -------------------------
+# Abstractive summarization placeholder
+# -------------------------
+def abstractive_summarize_text(text: str) -> str:
+    # Dummy placeholder, replace with HuggingFace summarization if desired
+    return extractive_reduce(text)
 
-    max_freq = max(word_freq.values())
-    for w in word_freq:
-        word_freq[w] /= max_freq
+# -------------------------
+# Keyword extraction
+# -------------------------
+def extract_keywords(text: str, top_n=10):
+    vec = TfidfVectorizer(stop_words='english', max_features=1000)
+    X = vec.fit_transform([text])
+    scores = X.toarray().flatten()
+    idx = scores.argsort()[-top_n:][::-1]
+    return [vec.get_feature_names_out()[i] for i in idx]
 
-    scores = []
-    for i, sent in enumerate(sentences):
-        words = word_tokens(sent)
-        score = sum(word_freq.get(w, 0) for w in words) / (len(words) + 1e-6)
-        scores.append((score, i, sent))
+# -------------------------
+# Topic modeling
+# -------------------------
+class TopicModeler:
+    def __init__(self, tfidf_vectorizer: TfidfVectorizer, lda_model: LatentDirichletAllocation):
+        self.vec = tfidf_vectorizer
+        self.lda = lda_model
 
-    keep = max(min_sentences, min(max_sentences, math.ceil(len(sentences) * ratio)))
-    top = heapq.nlargest(keep, scores, key=lambda x: (x[0], -x[1]))
-    top_sorted = sorted(top, key=lambda x: x[1])
-    return " ".join(s for (_score, _i, s) in top_sorted)
+    def predict_topic(self, text: str, top_words=5):
+        cleaned = clean_text(text)
+        X = self.vec.transform([cleaned])
+        topic_probs = self.lda.transform(X)[0]
+        topic_idx = topic_probs.argmax()
+        feature_names = self.vec.get_feature_names_out()
+        top_words_list = [feature_names[i] for i in self.lda.components_[topic_idx].argsort()[:-top_words-1:-1]]
+        return topic_idx + 1, float(topic_probs[topic_idx]), top_words_list
 
+def extract_topics(text: str, top_words=5):
+    if 'topic_modeler' in globals():
+        return topic_modeler.predict_topic(text, top_words)[2]
+    else:
+        return ["Topic model not initialized"]
 
-# --- Abstractive Summarization ---
-@st.cache_resource(show_spinner=False)
-def make_abstractive_pipeline(model_name: str = "t5-small"):
-    avail, err = try_enable_transformers()
-    if not avail:
-        raise RuntimeError(err or "models not available")
-
-    from transformers import pipeline
-    import torch as _torch
-    device = 0 if _torch.cuda.is_available() else -1
-    return pipeline("summarization", model=model_name, tokenizer=model_name, device=device)
-
-
-def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.9) -> str:
-    avail, err = try_enable_transformers()
-    if not avail:
-        return text
-
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model_max = getattr(tokenizer, "model_max_length", 512) or 1024
-    budget = max(64, int(model_max * fraction_of_model_max))
-    sentences = split_sentences(text)
-    if not sentences:
-        return text
-
-    def token_count(s: str) -> int:
-        return len(tokenizer.encode(s, add_special_tokens=False, truncation=False))
-
-    joined = " ".join(sentences)
-    if token_count(joined) <= budget:
-        return joined
-
-    trimmed_sents, current_tokens = [], 0
-    for sent in sentences:
-        sent_tokens = token_count(sent)
-        if current_tokens + sent_tokens + 2 <= budget:
-            trimmed_sents.append(sent)
-            current_tokens += sent_tokens
-        elif current_tokens == 0:
-            ids = tokenizer.encode(sent, add_special_tokens=False)[:budget]
-            return tokenizer.decode(ids, skip_special_tokens=True)
-    return " ".join(trimmed_sents)
-
-
-def abstractive_summarize_text(text: str, model_name: str = "t5-small",
-                               max_length: int = 120, min_length: int = 20, use_reduced: bool = True) -> str:
-    avail, err = try_enable_transformers()
-    if not avail:
-        raise RuntimeError(err or "models not available")
-
-    reduced = extractive_reduce(text, ratio=0.25, min_sentences=1, max_sentences=6) if use_reduced else text
-    trimmed = trim_for_model(reduced, model_name)
-    summarizer = make_abstractive_pipeline(model_name)
-    out = summarizer(trimmed, max_length=max_length, min_length=min_length, do_sample=False)
-    if isinstance(out, list) and out:
-        return out[0].get("summary_text", "").strip()
-    return str(out)
-
-
-# --- New Features ---
-def extract_keywords(text: str, top_n: int = 8) -> List[str]:
-    """Extract top-N keywords using TF-IDF weights."""
-    tfidf = TfidfVectorizer(stop_words='english', max_features=5000)
-    X = tfidf.fit_transform([text])
-    scores = zip(tfidf.get_feature_names_out(), np.asarray(X.sum(axis=0)).ravel())
-    sorted_keywords = sorted(scores, key=lambda x: x[1], reverse=True)
-    return [k for k, _ in sorted_keywords[:top_n]]
-
-
-def extract_topics(text, num_topics=1):
-    """Extract a single meaningful topic from the text."""
-    from sklearn.decomposition import LatentDirichletAllocation
-    from sklearn.feature_extraction.text import CountVectorizer
-
-    clean_t = clean_text(text)
-    if not clean_t.strip():
-        return []
-
-    # Convert to bag-of-words
-    vectorizer = CountVectorizer(max_features=5000, stop_words='english')
-    X = vectorizer.fit_transform([clean_t])
-
-    # Train a small LDA model to get top topic words
-    lda = LatentDirichletAllocation(n_components=1, random_state=42)
-    lda.fit(X)
-
-    feature_names = vectorizer.get_feature_names_out()
-    topic_words = [feature_names[i] for i in lda.components_[0].argsort()[:-8:-1]]
-    return [", ".join(topic_words)]
-
-
-
-def generate_recommendations(text: str, sentiment_label: str, keywords: List[str], topics: List[str]) -> List[str]:
-    """Generate actionable recommendations based on text content."""
+# -------------------------
+# Recommendations placeholder
+# -------------------------
+def generate_recommendations(text: str, sentiment:str=None, keywords=None, topics=None):
     recs = []
-    low_sent = sentiment_label.lower()
-    if "negative" in low_sent:
-        recs.append("⚠️ Text indicates dissatisfaction — consider deeper root-cause analysis.")
-    elif "neutral" in low_sent:
-        recs.append("🟡 Neutral tone — possible lack of engagement or clarity.")
-    elif "positive" in low_sent:
-        recs.append("✅ Positive insights — maintain and amplify these strengths.")
-
-    if any(word in text.lower() for word in ["delay", "slow", "issue", "problem"]):
-        recs.append("📊 Operational delays detected — optimize workflow or communication.")
-
-    if "customer" in text.lower():
-        recs.append("💬 Customer-focused improvement recommended.")
-
-    if not recs:
-        recs.append("ℹ️ No specific action detected — consider contextual review.")
+    if sentiment == 'positive':
+        recs.append("Keep the positive tone.")
+    elif sentiment == 'negative':
+        recs.append("Consider addressing negative aspects.")
+    if keywords:
+        recs.append(f"Focus on keywords: {', '.join(keywords[:5])}.")
+    if topics:
+        recs.append(f"Topic relevance: {', '.join(topics)}.")
     return recs
