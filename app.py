@@ -125,13 +125,20 @@ def load_and_preprocess_data():
 # -------------------------
 @st.cache_resource
 def train_and_save_models(_X_train, _y_train_num, _vec):
+    """Train and save a Logistic Regression sentiment model."""
+    from sklearn.linear_model import LogisticRegression
+
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
-    clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
-    clf.fit(_X_train.toarray(), _y_train_num)
-    joblib.dump(clf, os.path.join(MODEL_DIR, 'rf_sentiment.pkl'))
+
+    clf = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE, n_jobs=-1)
+    clf.fit(_X_train, _y_train_num)
+
+    joblib.dump(clf, os.path.join(MODEL_DIR, 'logreg_sentiment.pkl'))
     joblib.dump(_vec, os.path.join(MODEL_DIR, 'tfidf.pkl'))
+
     return clf, _vec
+
 
 # -------------------------
 # Theme detection helper
