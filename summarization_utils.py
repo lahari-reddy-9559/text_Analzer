@@ -157,17 +157,23 @@ def extract_keywords(text: str, top_n: int = 8) -> List[str]:
 
 
 def extract_topics(text: str, n_words: int = 6) -> str:
-    """
-    Perform LDA and return top words from the main topic as a comma-separated string.
-    """
+    """Perform lightweight topic extraction via LDA, single topic only."""
+    # Vectorize text
     tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
     X = tfidf.fit_transform([text])
-    lda = LatentDirichletAllocation(n_components=1, random_state=0)  # single topic
+
+    # Single topic
+    lda = LatentDirichletAllocation(n_components=1, random_state=0)
     lda.fit(X)
+
+    # Get terms and top words
     terms = tfidf.get_feature_names_out()
-    comp = lda.components_[0]  # top topic
-    top_terms = [terms[i] for i in comp.argsort()[:-n_words - 1:-1]]
+    topic = lda.components_[0]
+    top_terms = [terms[i] for i in topic.argsort()[:-n_words - 1:-1]]
+
+    # Return as comma-separated string
     return ", ".join(top_terms)
+
 
 
 
