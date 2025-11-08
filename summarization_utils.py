@@ -172,6 +172,7 @@ def extract_topics(text: str, n_words: int = 6) -> list[str]:
 
 
 
+
 def generate_recommendations(text: str, sentiment_label: str, keywords: List[str], topics: List[str]) -> List[str]:
     """Generate actionable recommendations based on text content."""
     recs = []
