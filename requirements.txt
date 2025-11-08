@@ -1,0 +1,28 @@
+# Core application framework and data handling
+streamlit
+pandas
+numpy
+matplotlib
+scikit-learn
+joblib
+reportlab
+textblob
+# Data source requirement
+kagglehub
+
+# NLP (Sentiment Analysis and Preprocessing)
+nltk
+
+# Word Cloud Visualization
+wordcloud
+
+# Abstractive Summarization Dependencies
+# Base ML/AI libraries
+tensorflow
+torch # PyTorch is often a necessary dependency for Hugging Face/Transformers
+
+# Hugging Face Transformers library
+transformers
+
+# Fix for Keras 3/Transformers compatibility issue (CRITICAL FIX)
+tf-keras
