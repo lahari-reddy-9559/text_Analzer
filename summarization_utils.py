@@ -160,7 +160,12 @@ from typing import List
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 
-def extract_topics(text: str, n_topics: int = 1, n_words: int = 6) -> str:
+from typing import List
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
+
+def extract_topics(text: str, n_topics: int = 3, n_words: int = 6) -> List[str]:
+    """Perform lightweight topic extraction via LDA."""
     tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
     X = tfidf.fit_transform([text])
     
@@ -168,13 +173,13 @@ def extract_topics(text: str, n_topics: int = 1, n_words: int = 6) -> str:
     lda.fit(X)
     
     terms = tfidf.get_feature_names_out()
+    topics = []
     
-    # Get top words from the first topic
-    top_terms = [terms[i] for i in lda.components_[0].argsort()[:-n_words - 1:-1]]
+    for comp in lda.components_:
+        top_terms = [terms[i] for i in comp.argsort()[:-n_words - 1:-1]]
+        topics.append(", ".join(top_terms))
     
-    return ", ".join(top_terms)
-
-
+    return topics
 
 
 
