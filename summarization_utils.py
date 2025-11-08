@@ -156,22 +156,22 @@ def extract_keywords(text: str, top_n: int = 8) -> List[str]:
     return [k for k, _ in sorted_keywords[:top_n]]
 
 
-def extract_topics(text: str, n_words: int = 6) -> str:
-    """Perform lightweight topic extraction via LDA, single topic only."""
-    # Vectorize text
+from typing import List
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
+
+def extract_topics(text: str, n_topics: int = 1, n_words: int = 6) -> str:
     tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
     X = tfidf.fit_transform([text])
-
-    # Single topic
-    lda = LatentDirichletAllocation(n_components=1, random_state=0)
+    
+    lda = LatentDirichletAllocation(n_components=n_topics, random_state=0)
     lda.fit(X)
-
-    # Get terms and top words
+    
     terms = tfidf.get_feature_names_out()
-    topic = lda.components_[0]
-    top_terms = [terms[i] for i in topic.argsort()[:-n_words - 1:-1]]
-
-    # Return as comma-separated string
+    
+    # Get top words from the first topic
+    top_terms = [terms[i] for i in lda.components_[0].argsort()[:-n_words - 1:-1]]
+    
     return ", ".join(top_terms)
 
 
