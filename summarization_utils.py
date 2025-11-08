@@ -156,19 +156,19 @@ def extract_keywords(text: str, top_n: int = 8) -> List[str]:
     return [k for k, _ in sorted_keywords[:top_n]]
 
 
-def extract_topics(text: str, n_words: int = 6) -> list[str]:
+def extract_topics(text: str, n_words: int = 6) -> str:
     """
-    Perform LDA and return only the top words from the main topic.
-    No 'Topic1' labels; just a list of words.
+    Perform LDA and return top words from the main topic as a comma-separated string.
     """
     tfidf = TfidfVectorizer(stop_words='english', max_features=1000)
     X = tfidf.fit_transform([text])
-    lda = LatentDirichletAllocation(n_components=1, random_state=0)
+    lda = LatentDirichletAllocation(n_components=1, random_state=0)  # single topic
     lda.fit(X)
     terms = tfidf.get_feature_names_out()
-    comp = lda.components_[0]  # only one topic
+    comp = lda.components_[0]  # top topic
     top_terms = [terms[i] for i in comp.argsort()[:-n_words - 1:-1]]
-    return top_terms
+    return ", ".join(top_terms)
+
 
 
 
