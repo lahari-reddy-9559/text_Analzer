@@ -320,7 +320,7 @@ if text_input and text_input.strip():
         topics = extract_topics(text_input)
         if topics:
             for i, t in enumerate(topics, 1):
-                st.info(f"Topic {i}: {t}")
+                st.info(f"Main topic top words : {t}")
         else:
             st.info('No topics extracted.')
 
