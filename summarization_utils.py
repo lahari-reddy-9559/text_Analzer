@@ -112,16 +112,21 @@ def load_or_train_lda(corpus_texts: List[str], n_topics: int = 5, n_words: int =
         joblib.dump(lda_vectorizer, LDA_VECTORIZER_PATH)
     return lda_model, lda_vectorizer
 
-def extract_topics(text: str, lda_model=None, lda_vectorizer=None, n_words: int = 6) -> List[str]:
+def extract_topics(text: str, lda_model=None, lda_vectorizer=None, n_words: int = 6) -> str:
+    """
+    Returns the top words of the most relevant topic for the given text.
+    """
     if lda_model is None or lda_vectorizer is None:
-        return ["No LDA model loaded"]
+        return "LDA model not loaded"
+
     X = lda_vectorizer.transform([text])
-    topic_probs = lda_model.transform(X)[0]
-    top_topic_idx = topic_probs.argmax()
+    topic_probs = lda_model.transform(X)[0]  # Topic distribution
+    top_topic_idx = topic_probs.argmax()     # Most probable topic
     feature_names = lda_vectorizer.get_feature_names_out()
-    topic_words_idx = lda_model.components_[top_topic_idx].argsort()[-n_words:][::-1]
-    top_words = [feature_names[i] for i in topic_words_idx]
-    return top_words
+    top_words_idx = lda_model.components_[top_topic_idx].argsort()[-n_words:][::-1]
+    top_words = [feature_names[i] for i in top_words_idx]
+    return ", ".join(top_words)
+
 
 # --- Recommendations ---
 def generate_recommendations(text: str, sentiment_label: str, keywords: List[str], topics: List[str]) -> List[str]:
