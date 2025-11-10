@@ -41,13 +41,18 @@ reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
+# --- Streamlit page config ---
 st.set_page_config(page_title="TalkTective | Lahari Reddy", layout="wide", page_icon="💬")
 
-bg_color = "#FFFFFF"
-fg_color = "#111111"
-card_bg = "#FFFFFF"
-shadow = "rgba(0,0,0,0.05)"
+# --- Theme auto-detect ---
+theme = st.get_option("theme.base")
+dark_mode = theme == "dark"
+bg_color = "#0E1117" if dark_mode else "#FFFFFF"
+fg_color = "#FAFAFA" if dark_mode else "#111111"
+card_bg = "#1E1E1E" if dark_mode else "#FFFFFF"
+shadow = "rgba(255,255,255,0.05)" if dark_mode else "rgba(0,0,0,0.05)"
 
+# --- Custom UI Styling ---
 st.markdown(f"""
 <style>
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"] {{
@@ -75,16 +80,19 @@ h1, h2, h3, label, p {{
 [data-testid="stHorizontalBlock"] {{
     gap: 10px !important;
 }}
-[data-testid="stButton"]:nth-child(1) button {{ background: linear-gradient(90deg, #FF6F61, #D7263D); }}
-[data-testid="stButton"]:nth-child(2) button {{ background: linear-gradient(90deg, #6C63FF, #4A47A3); }}
-[data-testid="stButton"]:nth-child(3) button {{ background: linear-gradient(90deg, #14B8A6, #0D9488); }}
-[data-testid="stButton"]:nth-child(4) button {{ background: linear-gradient(90deg, #FACC15, #EAB308); }}
-[data-testid="stButton"]:nth-child(5) button {{ background: linear-gradient(90deg, #8B5CF6, #6D28D9); }}
-[data-testid="stButton"]:nth-child(6) button {{ background: linear-gradient(90deg, #EC4899, #DB2777); }}
-[data-testid="stButton"]:nth-child(7) button {{ background: linear-gradient(90deg, #60A5FA, #2563EB); }}
-[data-testid="stButton"]:nth-child(8) button {{ background: linear-gradient(90deg, #34D399, #059669); }}
+/* Light gradient pastel button colors */
+[data-testid="stButton"]:nth-child(1) button {{ background: linear-gradient(90deg, #9CECFB, #65C7F7); }}
+[data-testid="stButton"]:nth-child(2) button {{ background: linear-gradient(90deg, #A1FFCE, #FAFFD1); color:#333; }}
+[data-testid="stButton"]:nth-child(3) button {{ background: linear-gradient(90deg, #FAD0C4, #FFD1FF); color:#333; }}
+[data-testid="stButton"]:nth-child(4) button {{ background: linear-gradient(90deg, #FFDEE9, #B5FFFC); color:#333; }}
+[data-testid="stButton"]:nth-child(5) button {{ background: linear-gradient(90deg, #D4FC79, #96E6A1); color:#333; }}
+[data-testid="stButton"]:nth-child(6) button {{ background: linear-gradient(90deg, #FBC2EB, #A6C1EE); color:#333; }}
+[data-testid="stButton"]:nth-child(7) button {{ background: linear-gradient(90deg, #FEE140, #FA709A); color:#333; }}
+[data-testid="stButton"]:nth-child(8) button {{ background: linear-gradient(90deg, #84FAB0, #8FD3F4); color:#333; }}
 </style>
 """, unsafe_allow_html=True)
+
+# --- Functions ---
 
 @st.cache_data(show_spinner="Loading dataset...")
 def load_and_preprocess_data():
@@ -148,6 +156,7 @@ def plot_compact_bar(sentiment_dict):
     plt.tight_layout()
     return fig
 
+# --- Model load ---
 if 'clf' not in st.session_state:
     df, vec, X_train, y_train_num, _, _ = load_and_preprocess_data()
     clf, tfidf = train_and_save_models(X_train, y_train_num, vec)
@@ -157,6 +166,7 @@ if 'clf' not in st.session_state:
 clf = st.session_state.clf
 vec = st.session_state.vec
 
+# --- UI Layout ---
 st.title("💬 TalkTective")
 st.caption("Developed by Lahari Reddy — Dynamic Text Intelligence Platform")
 
@@ -190,6 +200,7 @@ with row2[3]:
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown("<div id='results-section'></div>", unsafe_allow_html=True)
 
+# --- Button Actions ---
 if text_input and text_input.strip():
     if sentiment_btn:
         sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
@@ -274,12 +285,15 @@ if text_input and text_input.strip():
         doc.build(elements)
         st.download_button("💾 Save PDF Report", data=buffer.getvalue(), file_name="TalkTective_Report.pdf", mime="application/pdf")
 
+    # ✅ Smooth scroll script (fixes previous issue)
     scroll_script = """
         <script>
-            const resultsSection = document.getElementById('results-section');
-            if (resultsSection) {
-                resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.parent.document.querySelectorAll('iframe').forEach(iframe => {
+            const section = iframe.contentDocument?.getElementById('results-section');
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
+        });
         </script>
     """
     components.html(scroll_script, height=0)
