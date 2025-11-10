@@ -168,7 +168,7 @@ vec = st.session_state.vec
 
 # --- UI Layout ---
 st.title("💬 TextTective")
-st.caption("Developed by Lahari Reddy — Dynamic Text Intelligence Platform")
+st.caption("Developed by Lahari Reddy — the AI detective that investigates your text 👀")
 
 text_input = st.text_area("🧾 Enter text:", placeholder="Type or paste text here...", height=160)
 uploaded = st.file_uploader("📄 Upload a text file (.txt):", type=["txt"])
