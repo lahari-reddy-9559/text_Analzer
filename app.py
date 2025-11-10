@@ -16,15 +16,14 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from wordcloud import WordCloud
-import tensorflow as tf
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
+import tensorflow as tf
 
-# Import backend utilities
 try:
     from summarization_utils import (
         clean_text as clean_text_util,
@@ -34,8 +33,8 @@ try:
         extract_topics,
         generate_recommendations,
     )
-except Exception as e:
-    st.error("❌ Could not import summarization_utils. Ensure file is present and in PYTHONPATH.")
+except Exception:
+    st.error("summarization_utils.py missing or not found.")
     st.stop()
 
 warnings.filterwarnings("ignore")
@@ -47,30 +46,22 @@ reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
-# --- Streamlit Config ---
-st.set_page_config(
-    page_title="Talktective Studio | Lahari Reddy",
-    layout="wide",
-    page_icon="💬"
-)
+st.set_page_config(page_title="TalkTective | Lahari Reddy", layout="wide", page_icon="💬")
 
-# --- Visual theme ---
 st.markdown("""
 <style>
-body {
-    background: linear-gradient(135deg, #FDEFF9 0%, #ECF4FF 50%, #E8F9F0 100%);
-    font-family: 'Poppins', sans-serif;
+body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"] {
+    background-color: #FAFAFA !important;
+    color: #1E1E1E !important;
 }
 div.block-container {
-    padding-top: 1.6rem;
-    background-color: rgba(255, 255, 255, 0.94);
-    border-radius: 14px;
-    padding: 20px 24px;
+    background-color: white !important;
+    border-radius: 12px;
     box-shadow: 0px 4px 20px rgba(0,0,0,0.06);
+    padding: 25px 30px;
 }
-h1, h2, h3 {
-    color: #4B0082;
-    font-weight: 600;
+h1, h2, h3, label, p {
+    color: #1E1E1E !important;
 }
 .stButton>button {
     background: linear-gradient(90deg, #6C63FF, #00BFA6);
@@ -83,33 +74,22 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------
-# Data Loading & Preprocess
-# -------------------------
-@st.cache_data(show_spinner="📦 Loading dataset & models...")
+@st.cache_data(show_spinner="Loading dataset...")
 def load_and_preprocess_data():
-    try:
-        path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
-        df = pd.read_csv(os.path.join(path, 'train.csv'), encoding='latin-1')
-    except Exception:
-        return None, None, None, None, None, None, None
-
+    path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
+    df = pd.read_csv(os.path.join(path, 'train.csv'), encoding='latin-1')
     df.dropna(subset=['text', 'selected_text'], inplace=True)
-
     for pkg in ['punkt', 'stopwords', 'wordnet']:
         try:
             nltk.data.find(f'tokenizers/{pkg}' if pkg == 'punkt' else f'corpora/{pkg}')
         except LookupError:
             nltk.download(pkg, quiet=True)
-
     lemmatizer = WordNetLemmatizer()
     stop_words = set(stopwords.words('english'))
-
     def clean_local(t):
         t = str(t).lower().translate(str.maketrans('', '', string.punctuation))
         w = [lemmatizer.lemmatize(x) for x in t.split() if x not in stop_words]
         return ' '.join(w)
-
     df['cleaned_text'] = df['text'].apply(clean_local)
     vec = TfidfVectorizer(max_features=MAX_FEATURES)
     vec.fit(df['cleaned_text'])
@@ -118,117 +98,52 @@ def load_and_preprocess_data():
         X, df['sentiment'], test_size=0.2, random_state=RANDOM_STATE, stratify=df['sentiment']
     )
     y_train_num = pd.Series(y_train).map(sentiment_mapping).astype(int)
-    return df, vec, X_train, y_train_num, X, X_test, y_test
+    return df, vec, X_train, y_train_num, X_test, y_test
 
-# -------------------------
-# Train (cache-safe)
-# -------------------------
 @st.cache_resource
 def train_and_save_models(_X_train, _y_train_num, _vec):
-    """Train and save a Logistic Regression sentiment model."""
-    from sklearn.linear_model import LogisticRegression
-
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
-
     clf = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE, n_jobs=-1)
     clf.fit(_X_train, _y_train_num)
-
     joblib.dump(clf, os.path.join(MODEL_DIR, 'logreg_sentiment.pkl'))
     joblib.dump(_vec, os.path.join(MODEL_DIR, 'tfidf.pkl'))
-
     return clf, _vec
-
-
-# -------------------------
-# Theme detection helper
-# -------------------------
-
-def is_streamlit_dark():
-    """Return True if Streamlit theme is dark; fallback False."""
-    try:
-        base = st.get_option("theme.base")
-        return base == "dark"
-    except Exception:
-        return False
-
-# -------------------------
-# Utility functions
-# -------------------------
 
 def analyze_sentiment(text, vec, clf):
     clean_t = clean_text_util(text)
     X = vec.transform([clean_t]).toarray()
     probs = clf.predict_proba(X)[0]
-    # clf.classes_ should be numeric labels (0,1,2)
     results = {}
     for c, p in zip(clf.classes_, probs):
-        # map numeric class to label string using reverse_sentiment_mapping
         label = reverse_sentiment_mapping.get(int(c), str(c))
         results[label] = float(p)
     top = reverse_sentiment_mapping[int(clf.classes_[np.argmax(probs)])]
     return results, top
 
-
-def generate_wc_image(text, dark_mode=False):
-    """Return PIL Image of WordCloud sized 500x300 pixels."""
+def generate_wc_image(text):
     clean_t = clean_text_util(text)
-    if not clean_t:
-        bg = "black" if dark_mode else "white"
-        im = Image.new("RGB", (500, 300), color=bg)
-        return im
+    wc = WordCloud(width=500, height=300, background_color="white",
+                   colormap="viridis", max_words=150).generate(clean_t)
+    return wc.to_image()
 
-    wc = WordCloud(width=500, height=300,
-                   background_color="black" if dark_mode else "white",
-                   colormap="plasma" if dark_mode else "viridis",
-                   max_words=150).generate(clean_t)
-
-    img = wc.to_image()
-    return img
-
-
-def plot_compact_bar(sentiment_dict, dark_mode=False):
+def plot_compact_bar(sentiment_dict):
     labels = list(sentiment_dict.keys())
     vals = [sentiment_dict[k] for k in labels]
-
-    if dark_mode:
-        bg = "#0b0f14"
-        text_color = "white"
-        bar_colors = ['#FF6B6B', '#FFD166', '#06D6A0']
-    else:
-        bg = "white"
-        text_color = "#222222"
-        bar_colors = ['#F87171', '#FACC15', '#34D399']
-
     fig, ax = plt.subplots(figsize=(5, 3), dpi=100)
-    bars = ax.bar(labels, vals, color=bar_colors[:len(labels)], width=0.35, edgecolor='gray')
-
+    bar_colors = ['#F87171', '#FACC15', '#34D399']
+    ax.bar(labels, vals, color=bar_colors[:len(labels)], width=0.35, edgecolor='gray')
     ax.set_ylim(0, 1.05)
-    ax.set_title("Sentiment Confidence", fontsize=10, color=text_color, pad=6)
-    ax.set_ylabel("Probability", color=text_color, fontsize=9)
-    ax.set_xlabel("", color=text_color)
+    ax.set_title("Sentiment Confidence", fontsize=10, color="#222", pad=6)
+    ax.set_ylabel("Probability", color="#222", fontsize=9)
     ax.grid(axis='y', linestyle='--', alpha=0.35)
-
-    fig.patch.set_facecolor(bg)
-    ax.set_facecolor(bg)
-
-    ax.tick_params(colors=text_color, which='both')
     for spine in ['top', 'right']:
         ax.spines[spine].set_visible(False)
-    plt.setp(ax.get_xticklabels(), fontsize=9, color=text_color)
-    plt.setp(ax.get_yticklabels(), fontsize=8, color=text_color)
-
     plt.tight_layout()
     return fig
 
-# -------------------------
-# Load / initialize model
-# -------------------------
 if 'clf' not in st.session_state:
-    df, vec, X_train, y_train_num, _, _, _ = load_and_preprocess_data()
-    if df is None:
-        st.error("Setup failed: could not load dataset. Check Kaggle config and dataset availability.")
-        st.stop()
+    df, vec, X_train, y_train_num, _, _ = load_and_preprocess_data()
     clf, tfidf = train_and_save_models(X_train, y_train_num, vec)
     st.session_state.clf = clf
     st.session_state.vec = tfidf
@@ -236,104 +151,101 @@ if 'clf' not in st.session_state:
 clf = st.session_state.clf
 vec = st.session_state.vec
 
-# -------------------------
-# UI Header
-# -------------------------
 st.title("💬 TalkTective")
-st.caption("Developed by **Lahari Reddy** - the AI detective that investigates your text✨")
+st.caption("Developed by Lahari Reddy — Investigate your text with precision.")
 
-# Input area
-text_input = st.text_area("📝 Enter Text:", placeholder="Paste or type text to analyze...", height=160)
-uploaded = st.file_uploader("📄 Or upload a text file (.txt):", type=["txt"])
+text_input = st.text_area("Enter text:", placeholder="Type or paste text here...", height=160)
+uploaded = st.file_uploader("Upload a text file (.txt):", type=["txt"])
 if uploaded:
     text_input = uploaded.read().decode("utf-8", errors="ignore")
 
 st.markdown("---")
 
-# ---------- TWO ROWS: Row1 (4 buttons) Row2 (3 buttons) ----------
-st.markdown("<br>", unsafe_allow_html=True)
 row1 = st.columns(4)
 with row1[0]:
-    sentiment_btn = st.button("🧠 Sentiment Analysis", key="btn_sentiment")
+    sentiment_btn = st.button("Sentiment", key="sentiment")
 with row1[1]:
-    extractive_btn = st.button("✂️ Extractive Summary", key="btn_extractive")
+    extractive_btn = st.button("Extractive", key="extractive")
 with row1[2]:
-    abstractive_btn = st.button("🪶 Abstractive Summary", key="btn_abstractive")
+    abstractive_btn = st.button("Abstractive", key="abstractive")
 with row1[3]:
-    wordcloud_btn = st.button("☁️ Word Cloud", key="btn_wordcloud")
+    wordcloud_btn = st.button("Word Cloud", key="wordcloud")
 
 st.markdown("<br>", unsafe_allow_html=True)
-row2 = st.columns(3)
+
+row2 = st.columns(4)
 with row2[0]:
-    keywords_btn = st.button("🧩 Keywords", key="btn_keywords")
+    keywords_btn = st.button("Keywords", key="keywords")
 with row2[1]:
-    topics_btn = st.button("📊 Topics", key="btn_topics")
+    topics_btn = st.button("Topics", key="topics")
 with row2[2]:
-    insights_btn = st.button("🎯 Insights", key="btn_insights")
+    insights_btn = st.button("Insights", key="insights")
+with row2[3]:
+    pdf_btn = st.button("Download PDF", key="pdf")
 
 st.markdown("---")
 
-dark_mode = is_streamlit_dark()
+placeholder = st.empty()
 
-# -------------------------
-# Main Logic: center visuals
-# -------------------------
 if text_input and text_input.strip():
-
-    # Sentiment
     if sentiment_btn:
-        st.subheader("🧠 Sentiment Analysis")
-        sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
-        st.success(f"Predicted Sentiment: **{top_sent.upper()}**")
+        st.session_state.scroll_to = "sentiment"
+    elif extractive_btn:
+        st.session_state.scroll_to = "extractive"
+    elif abstractive_btn:
+        st.session_state.scroll_to = "abstractive"
+    elif wordcloud_btn:
+        st.session_state.scroll_to = "wordcloud"
+    elif keywords_btn:
+        st.session_state.scroll_to = "keywords"
+    elif topics_btn:
+        st.session_state.scroll_to = "topics"
+    elif insights_btn:
+        st.session_state.scroll_to = "insights"
+    elif pdf_btn:
+        st.session_state.scroll_to = "pdf"
 
-        fig = plot_compact_bar(sentiment_probs, dark_mode=dark_mode)
+    st.markdown(
+        f"<a id='result'></a><script>window.scrollTo(0,document.body.scrollHeight);</script>",
+        unsafe_allow_html=True
+    )
+
+    if sentiment_btn:
+        sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
+        st.subheader("Sentiment Analysis")
+        st.success(f"Predicted Sentiment: {top_sent.upper()}")
+        fig = plot_compact_bar(sentiment_probs)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.pyplot(fig, use_container_width=False)
 
-    # Extractive summary
     if extractive_btn:
-        st.subheader("✂️ Extractive Summary")
+        st.subheader("Extractive Summary")
         st.info(extractive_reduce(text_input))
 
-    # Abstractive summary
     if abstractive_btn:
-        st.subheader("🪶 Abstractive Summary")
-        try:
-            st.info(abstractive_summarize_text(text_input))
-        except Exception as e:
-            st.error(f"Abstractive summarization error: {e}")
+        st.subheader("Abstractive Summary")
+        st.info(abstractive_summarize_text(text_input))
 
-    # Wordcloud
     if wordcloud_btn:
-        st.subheader("☁️ Word Cloud Visualization")
-        wc_img = generate_wc_image(text_input, dark_mode=dark_mode)
+        st.subheader("Word Cloud")
+        wc_img = generate_wc_image(text_input)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.image(wc_img, use_column_width=False, width=500)
 
-    # Keywords
     if keywords_btn:
-        st.subheader("🧩 Key Keywords")
-        kw = extract_keywords(text_input)
-        if kw:
-            st.success(', '.join(kw))
-        else:
-            st.info('No keywords extracted.')
+        st.subheader("Key Keywords")
+        st.success(', '.join(extract_keywords(text_input)))
 
-    # Topics
     if topics_btn:
-        st.subheader("📊 Extracted Topics")
+        st.subheader("Extracted Topics")
         topics = extract_topics(text_input)
-        if topics:
-            for i, t in enumerate(topics, 1):
-                st.info(f"Main topic top words : {t}")
-        else:
-            st.info('No topics extracted.')
+        for t in topics:
+            st.info(t)
 
-    # Insights
     if insights_btn:
-        st.subheader("🎯 Actionable Insights")
+        st.subheader("Insights")
         sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
         kw = extract_keywords(text_input)
         topics = extract_topics(text_input)
@@ -341,67 +253,48 @@ if text_input and text_input.strip():
         for r in recs:
             st.markdown(f"- {r}")
 
-    # PDF generation (small/compact visuals)
-    if st.button("📥 Download Full Report (PDF)", key="btn_pdf"):
+    if pdf_btn:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
         styles = getSampleStyleSheet()
         elements = [
-            Paragraph("<b>Text Insight Studio - Compact Report</b>", styles["Title"]),
+            Paragraph("TalkTective - Compact Report", styles["Title"]),
             Spacer(1, 8),
             Paragraph("Original Text:", styles["Heading2"]),
             Paragraph(text_input[:1200] + ("..." if len(text_input) > 1200 else ""), styles["Normal"]),
             Spacer(1, 8)
         ]
-
         sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
         elements.append(Paragraph("Predicted Sentiment:", styles["Heading2"]))
         elements.append(Paragraph(str(top_sent).upper(), styles["Normal"]))
         elements.append(Spacer(1, 6))
-
         elements.append(Paragraph("Extractive Summary:", styles["Heading2"]))
         elements.append(Paragraph(extractive_reduce(text_input), styles["Normal"]))
         elements.append(Spacer(1, 6))
-
         try:
             elements.append(Paragraph("Abstractive Summary:", styles["Heading2"]))
             elements.append(Paragraph(abstractive_summarize_text(text_input), styles["Normal"]))
-            elements.append(Spacer(1, 6))
         except Exception:
             pass
-
-        wc_img = generate_wc_image(text_input, dark_mode=dark_mode)
+        wc_img = generate_wc_image(text_input)
         img_path = "wordcloud_500x300.png"
         wc_img.save(img_path)
-        elements.append(RLImage(img_path, width=5.0*inch, height=3.0*inch))
+        elements.append(RLImage(img_path, width=5.0 * inch, height=3.0 * inch))
         elements.append(Spacer(1, 8))
-
-        # Keywords & topics & recommendations
         kws = extract_keywords(text_input)
         topics = extract_topics(text_input)
         recs = generate_recommendations(text_input, top_sent, kws, topics)
-
-        elements.append(Paragraph("Top Keywords:", styles["Heading2"]))
+        elements.append(Paragraph("Keywords:", styles["Heading2"]))
         elements.append(Paragraph(', '.join(kws), styles["Normal"]))
         elements.append(Spacer(1, 6))
-
         elements.append(Paragraph("Topics:", styles["Heading2"]))
         for t in topics:
             elements.append(Paragraph(t, styles["Normal"]))
         elements.append(Spacer(1, 6))
-
         elements.append(Paragraph("Recommendations:", styles["Heading2"]))
         for r in recs:
             elements.append(Paragraph(r, styles["Normal"]))
-
         doc.build(elements)
-        st.download_button("⬇️ Save Compact PDF Report",
-                           data=buffer.getvalue(),
-                           file_name="Text_Insight_Compact_Report.pdf",
-                           mime="application/pdf")
+        st.download_button("Save PDF Report", data=buffer.getvalue(), file_name="TalkTective_Report.pdf", mime="application/pdf")
 else:
-    st.info("💡 Enter text above or upload a file to start analysis.")
-
-# Footer
-st.markdown('---')
-st.caption('Built with simple, auditable NLP building blocks. Customize the rules and models to suit your domain.')
+    st.info("Enter text or upload a file to start.")
