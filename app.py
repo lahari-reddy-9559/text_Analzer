@@ -42,7 +42,7 @@ MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
 # --- Streamlit page config ---
-st.set_page_config(page_title="TalkTective | Lahari Reddy", layout="centered", page_icon="💬")
+st.set_page_config(page_title="TextTective | Lahari Reddy", layout="centered", page_icon="💬")
 
 # --- Theme auto-detect ---
 theme = st.get_option("theme.base")
@@ -167,7 +167,7 @@ clf = st.session_state.clf
 vec = st.session_state.vec
 
 # --- UI Layout ---
-st.title("💬 TalkTective")
+st.title("💬 TextTective")
 st.caption("Developed by Lahari Reddy — Dynamic Text Intelligence Platform")
 
 text_input = st.text_area("🧾 Enter text:", placeholder="Type or paste text here...", height=160)
