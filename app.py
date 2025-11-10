@@ -42,7 +42,7 @@ MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
 # --- Streamlit page config ---
-st.set_page_config(page_title="TalkTective | Lahari Reddy", layout="wide", page_icon="💬")
+st.set_page_config(page_title="TalkTective | Lahari Reddy", layout="centered", page_icon="💬")
 
 # --- Theme auto-detect ---
 theme = st.get_option("theme.base")
